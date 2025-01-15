@@ -1,0 +1,142 @@
+# *****************
+# Base image for planner & builder
+# *****************
+FROM --platform=$BUILDPLATFORM rust:slim-bookworm AS base
+
+ARG ZIG_VERSION="0.13.0"
+ENV DEBIAN_FRONTEND="noninteractive" \
+    RUSTC_WRAPPER="sccache" \
+    BINSTALL_DISABLE_TELEMETRY=true \
+    SCCACHE_GHA_ENABLED=true \
+    CARGO_TERM_COLOR=always
+# With zig, we only need libclang and make
+RUN \
+  --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  rm -f /etc/apt/apt.conf.d/docker-clean && \
+  echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' >/etc/apt/apt.conf.d/keep-cache && \
+  apt-get update && \
+  apt-get install -yq --no-install-recommends curl xz-utils make libclang-16-dev
+# Install zig & foundationdb lib & cargo-binstall
+# TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
+# Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+# The last command is for future build use, so if you are building on a native arm64 device, please use docker qemu.
+RUN \
+  curl --retry 5 -Ls "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-$(uname -m)-${ZIG_VERSION}.tar.xz" | tar -J -x -C /usr/local && \
+  ln -s "/usr/local/zig-linux-$(uname -m)-${ZIG_VERSION}/zig" /usr/local/bin/zig && \
+  curl --retry 5 -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
+  curl --retry 5 -Lso /usr/lib/libfdb_c.so "https://glare.now.sh/apple/foundationdb/libfdb_c.$(uname -m).so"
+# Install cargo-chef & sccache & cargo-zigbuild
+RUN cargo binstall --no-confirm cargo-chef sccache cargo-zigbuild
+
+# *****************
+# Planner
+# *****************
+FROM base AS planner
+WORKDIR /app
+COPY . .
+# Generate recipe file
+RUN cargo chef prepare --recipe-path recipe.json
+
+# *****************
+# Builder
+# *****************
+FROM base AS builder
+# Default target
+ARG TARGET="x86_64-unknown-linux-gnu"
+ARG BUILD_ENV
+
+WORKDIR /app
+COPY --from=planner /app/recipe.json recipe.json
+# Install toolchain and specify some env variables
+RUN \
+  rustup target add ${TARGET} && \
+  export SCCACHE_GHA_CACHE_FROM=${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
+  export SCCACHE_GHA_CACHE_TO=${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
+  mkdir -p artifact && \
+  if [ ! -z "${BUILD_ENV}" ]; then \
+      export ${BUILD_ENV}; \
+      echo "Setting up ${BUILD_ENV}"; \
+  fi
+# Cargo-chef Cache layer
+RUN \
+    --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
+    --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
+    # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+    if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
+        RUSTFLAGS="-L /usr/lib" cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
+    fi
+RUN \
+    --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
+    --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli
+# Copy the source code
+COPY . .
+# Some env used by sccache
+RUN \
+    export SCCACHE_GHA_CACHE_FROM=${TARGET}-build,${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
+    export SCCACHE_GHA_CACHE_TO=${TARGET}-build
+# Build foundationdb version
+RUN \
+    --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
+    --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
+    # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+    if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
+        RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
+        mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail-foundationdb; \
+    fi
+# Build generic version
+RUN \
+    --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
+    --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
+    --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli && \
+    mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail && \
+    mv /app/target/${TARGET}/release/stalwart-cli /app/artifact/stalwart-cli
+
+# *****************
+# Binary stage
+# *****************
+FROM scratch AS binaries
+COPY --from=builder /app/artifact /
+
+# *****************
+# Runtime image for GNU artifact
+# *****************
+FROM docker.io/debian:bookworm-slim AS gnu
+WORKDIR /opt/stalwart-mail
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    apt-get update && \
+    apt-get install -yq ca-certificates tzdata
+COPY --from=binaries /stalwart-mail /usr/local/bin
+COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod -R 755 /usr/local/bin
+CMD ["/usr/local/bin/stalwart-mail"]
+VOLUME [ "/opt/stalwart-mail" ]
+EXPOSE	443 25 110 587 465 143 993 995 4190 8080
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
+
+# *****************
+# Runtime image for musl artifact
+# *****************
+FROM alpine AS musl
+WORKDIR /opt/stalwart-mail
+RUN apk add --update --no-cache ca-certificates tzdata && rm -rf /var/cache/apk/*
+COPY --from=binaries /stalwart-mail /usr/local/bin
+COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod -R 755 /usr/local/bin
+CMD ["/usr/local/bin/stalwart-mail"]
+VOLUME [ "/opt/stalwart-mail" ]
+EXPOSE	443 25 110 587 465 143 993 995 4190 8080
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
