@@ -80,9 +80,6 @@ jobs:
 
       - name: Log In to DockerHub
         uses: docker/login-action@v3
-        env:
-          dockerhub: ${{secrets.DOCKERHUB_USERNAME}}${{secrets.DOCKERHUB_TOKEN}}
-        if: ${{ env.dockerhub != '' }}
         with:
           username: ${{secrets.DOCKERHUB_USERNAME}}
           password: ${{secrets.DOCKERHUB_TOKEN}}
@@ -128,7 +125,7 @@ jobs:
           skip-extraction: ${{ steps.cargo-cache.outputs.cache-hit }} && ${{ steps.apt-cache.outputs.cache-hit }}
 
       - name: Build Artifact
-        uses: docker/bake-action@v5
+        uses: docker/bake-action@v6
         env:
           TARGET: ${{matrix.target}}
           DOCKER_BUILD_RECORD_UPLOAD: false
@@ -136,6 +133,7 @@ jobs:
           BUILD_ENV: ${{matrix.build_env}}
           ZIG_VERSION: ${{ steps.zig-version.outputs.zig_version }}
         with:
+          source: .
           files: |
             ./docker-bake.hcl
             ${{ steps.meta.outputs.bake-file }}
@@ -226,6 +224,10 @@ jobs:
 
   release:
     name: Release
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
     if: github.event_name == 'push' || inputs.Release
     needs: [linux, windows, macos]
     runs-on: ubuntu-latest
@@ -259,6 +261,13 @@ jobs:
               dir_name=$(basename "$arch_dir")
               compress_files "$dir_name"
           done
+
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            ./archive/**/*.tar.gz
+            ./archive/**/*.zip
 
       - name: Release
         uses: softprops/action-gh-release@v2
