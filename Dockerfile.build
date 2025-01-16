@@ -110,9 +110,9 @@ FROM scratch AS binaries
 COPY --from=builder /app/artifact /
 
 # *****************
-# Runtime image for GNU artifact
+# Runtime image for GNU-amd64 artifact
 # *****************
-FROM --platform=$TARGETPLATFORM docker.io/debian:bookworm-slim AS gnu
+FROM --platform=linux/amd64 docker.io/debian:bookworm-slim AS gnu-amd64
 WORKDIR /opt/stalwart-mail
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
@@ -127,9 +127,41 @@ EXPOSE	443 25 110 587 465 143 993 995 4190 8080
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
 
 # *****************
-# Runtime image for musl artifact
+# Runtime image for musl-arm64 artifact
 # *****************
-FROM --platform=$TARGETPLATFORM alpine AS musl
+FROM --platform=linux/arm64 alpine AS musl-arm64
+WORKDIR /opt/stalwart-mail
+RUN apk add --update --no-cache ca-certificates tzdata && rm -rf /var/cache/apk/*
+COPY --from=binaries /stalwart-mail /usr/local/bin
+COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod -R 755 /usr/local/bin
+CMD ["/usr/local/bin/stalwart-mail"]
+VOLUME [ "/opt/stalwart-mail" ]
+EXPOSE	443 25 110 587 465 143 993 995 4190 8080
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
+
+# *****************
+# Runtime image for GNU-arm64 artifact
+# *****************
+FROM --platform=linux/arm64 docker.io/debian:bookworm-slim AS gnu-arm64
+WORKDIR /opt/stalwart-mail
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    apt-get update && \
+    apt-get install -yq ca-certificates tzdata
+COPY --from=binaries /stalwart-mail /usr/local/bin
+COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod -R 755 /usr/local/bin
+CMD ["/usr/local/bin/stalwart-mail"]
+VOLUME [ "/opt/stalwart-mail" ]
+EXPOSE	443 25 110 587 465 143 993 995 4190 8080
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
+
+# *****************
+# Runtime image for musl-amd64 artifact
+# *****************
+FROM --platform=linux/amd64 alpine AS musl-amd64
 WORKDIR /opt/stalwart-mail
 RUN apk add --update --no-cache ca-certificates tzdata && rm -rf /var/cache/apk/*
 COPY --from=binaries /stalwart-mail /usr/local/bin

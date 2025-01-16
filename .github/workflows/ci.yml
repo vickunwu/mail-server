@@ -138,6 +138,7 @@ jobs:
           ARTIFACT_REPO: ghcr.io/${{github.repository}}
           BUILD_ENV: ${{matrix.build_env}}
           ZIG_VERSION: ${{ steps.zig-version.outputs.zig_version }}
+          DOCKER_PLATFORM: ${{ startsWith(matrix.target, 'x86') && 'amd64' || 'arm64' }}
         with:
           source: .
           files: |
@@ -309,4 +310,5 @@ jobs:
           append_body: true
           body: |
             <hr />
+
             ## Check binary attestation at [here](${{ steps.attest.outputs.attestation-url }})

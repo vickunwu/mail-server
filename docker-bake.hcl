@@ -13,6 +13,9 @@ variable "BUILD_ENV" {
 variable "ZIG_VERSION" {
   default = "$ZIG_VERSION"
 }
+variable "DOCKER_PLATFORM" {
+  default = "$DOCKER_PLATFORM"
+}
 target "docker-metadata-action" {}
 target "build" {
   secret = [
@@ -41,9 +44,9 @@ target "image" {
   cache-from = [
     "type=registry,ref=${ARTIFACT_REPO}:buildcache-${TARGET}"
   ]
-  target = regexall("(?P<arch>[^-]+)-unknown-linux-(?P<tgt>.+)", TARGET)[0].tgt
+  target = "${regexall("(?P<arch>[^-]+)-unknown-linux-(?P<tgt>.+)", TARGET)[0].tgt}-${DOCKER_PLATFORM}"
   platforms = [
-    regexall("(?P<arch>[^-]+)-unknown-linux-(?P<tgt>.+)", TARGET)[0].arch == "aarch64" ? "linux/arm64" : "linux/amd64"
+    "linux/amd64","linux/arm64"
   ]
   output = ["type=image,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true"]
 }
