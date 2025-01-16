@@ -112,7 +112,7 @@ COPY --from=builder /app/artifact /
 # *****************
 # Runtime image for GNU artifact
 # *****************
-FROM docker.io/debian:bookworm-slim AS gnu
+FROM --platform=$TARGETPLATFORM docker.io/debian:bookworm-slim AS gnu
 WORKDIR /opt/stalwart-mail
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
@@ -129,7 +129,7 @@ ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
 # *****************
 # Runtime image for musl artifact
 # *****************
-FROM alpine AS musl
+FROM --platform=$TARGETPLATFORM alpine AS musl
 WORKDIR /opt/stalwart-mail
 RUN apk add --update --no-cache ca-certificates tzdata && rm -rf /var/cache/apk/*
 COPY --from=binaries /stalwart-mail /usr/local/bin
