@@ -45,5 +45,8 @@ target "image" {
     "type=registry,ref=${ARTIFACT_REPO}:buildcache-${TARGET}"
   ]
   target = "${regexall("(?P<arch>[^-]+)-unknown-linux-(?P<tgt>.+)", TARGET)[0].tgt}-${DOCKER_PLATFORM}"
+  platforms = [
+    "linux/${DOCKER_PLATFORM}"
+  ]
   output = ["type=image,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true"]
 }

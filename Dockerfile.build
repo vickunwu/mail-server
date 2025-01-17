@@ -87,18 +87,18 @@ RUN \
     export SCCACHE_GHA_CACHE_FROM=${TARGET}-build,${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
     export SCCACHE_GHA_CACHE_TO=${TARGET}-build
 # Build foundationdb version
-RUN \
-    --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
-    --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
-    --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
-    # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
-    source /env-cargo && \
-    if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
-        RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
-        mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail-foundationdb; \
-    fi
+# RUN \
+#     --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
+#     --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
+#     --mount=type=cache,target=/usr/local/cargo/registry \
+#     --mount=type=cache,target=/usr/local/cargo/git \
+#     # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
+#     # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+#     source /env-cargo && \
+#     if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
+#         RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
+#         mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail-foundationdb; \
+#     fi
 # Build generic version
 RUN \
     --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
@@ -124,8 +124,8 @@ WORKDIR /opt/stalwart-mail
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && \
     apt-get install -yq ca-certificates tzdata
-COPY --from=binaries /stalwart-mail /usr/local/bin
-COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY --from=builder /app/artifact/stalwart-mail /usr/local/bin
+COPY --from=builder /app/artifact/stalwart-cli /usr/local/bin
 COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R 755 /usr/local/bin
 CMD ["/usr/local/bin/stalwart-mail"]
@@ -139,8 +139,8 @@ ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
 FROM --platform=linux/arm64 alpine AS musl-arm64
 WORKDIR /opt/stalwart-mail
 RUN apk add --update --no-cache ca-certificates tzdata && rm -rf /var/cache/apk/*
-COPY --from=binaries /stalwart-mail /usr/local/bin
-COPY --from=binaries /stalwart-cli /usr/local/bin
+COPY --from=builder /app/artifact/stalwart-mail /usr/local/bin
+COPY --from=builder /app/artifact/stalwart-cli /usr/local/bin
 COPY ./resources/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod -R 755 /usr/local/bin
 CMD ["/usr/local/bin/stalwart-mail"]
