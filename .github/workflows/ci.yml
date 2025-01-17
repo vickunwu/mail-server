@@ -209,27 +209,27 @@ jobs:
             artifact
             !artifact/*.json
 
-      - name: Get image digest
-        id: image-digest
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
-        run: |
-          echo "image_digest=$(echo '${{ steps.build.outputs.metadata }}' | jq -r '.image.["containerimage.digest"]')" >> "$GITHUB_OUTPUT"
+    #   - name: Get image digest
+    #     id: image-digest
+    #     if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+    #     run: |
+    #       echo "image_digest=$(echo '${{ steps.build.outputs.metadata }}' | jq -r '.image.["containerimage.digest"]')" >> "$GITHUB_OUTPUT"
 
-      - name: Attest Dockerhub
-        uses: actions/attest-build-provenance@v2
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
-        with:
-          subject-name: index.docker.io/${{github.repository}}
-          subject-digest: ${{ steps.image-digest.outputs.image_digest }}
-          push-to-registry: true
+    #   - name: Attest Dockerhub
+    #     uses: actions/attest-build-provenance@v2
+    #     if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+    #     with:
+    #       subject-name: index.docker.io/${{github.repository}}
+    #       subject-digest: ${{ steps.image-digest.outputs.image_digest }}
+    #       push-to-registry: true
 
-      - name: Attest GHCR
-        uses: actions/attest-build-provenance@v2
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
-        with:
-          subject-name: ghcr.io/${{github.repository}}
-          subject-digest: ${{ steps.image-digest.outputs.image_digest }}
-          push-to-registry: true
+    #   - name: Attest GHCR
+    #     uses: actions/attest-build-provenance@v2
+    #     if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+    #     with:
+    #       subject-name: ghcr.io/${{github.repository}}
+    #       subject-digest: ${{ steps.image-digest.outputs.image_digest }}
+    #       push-to-registry: true
 
   windows:
     name: Build / ${{matrix.target}}
