@@ -73,31 +73,31 @@ jobs:
       - name: Create ${{matrix.variant}} manifest list and push
         working-directory: ${{ runner.temp }}/${{matrix.variant}}/digests
         run: |
-          docker buildx imagetools create $(jq -cr '.target."docker-metadata-action".tags | map(select(startswith("${{github.repository}}")) | "-t " + .) | join(" ")' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) \
-            $(printf '${{github.repository}}@sha256:%s ' *)
           docker buildx imagetools create $(jq -cr '.target."docker-metadata-action".tags | map(select(startswith("ghcr.io/${{github.repository}}")) | "-t " + .) | join(" ")' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) \
             $(printf 'ghcr.io/${{github.repository}}@sha256:%s ' *)
+          docker buildx imagetools create $(jq -cr '.target."docker-metadata-action".tags | map(select(startswith("index.docker.io/${{github.repository}}")) | "-t " + .) | join(" ")' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) \
+            $(printf 'index.docker.io/${{github.repository}}@sha256:%s ' *)
 
       - name: Inspect ${{matrix.variant}} image
         id: manifest-digest
         run: |
-          DOCKERHUB_DIGEST_SHA="$(docker buildx imagetools inspect --format '{{json .Manifest}}' ${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest')"
-          GHCR_DIGEST_SHA="$(docker buildx imagetools inspect --format '{{json .Manifest}}' ${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest')"
-          echo "DOCKERHUB_DIGEST_SHA=${DOCKERHUB_DIGEST_SHA}" | tee -a "${GITHUB_ENV}"
-          echo "GHCR_DIGEST_SHA=${GHCR_DIGEST_SHA}" | tee -a "${GITHUB_ENV}"
-
-      - name: Attest Dockerhub
-        uses: actions/attest-build-provenance@v2
-        with:
-          subject-name: index.docker.io/${{github.repository}}
-          subject-digest: ${{ env.DOCKERHUB_DIGEST_SHA }}
-          push-to-registry: true
+          docker buildx imagetools inspect --format '{{json .Manifest}}' ghcr.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' >> GHCR_DIGEST_SHA
+          echo "GHCR_DIGEST_SHA=$(cat GHCR_DIGEST_SHA)" | tee -a "${GITHUB_ENV}"
+          docker buildx imagetools inspect --format '{{json .Manifest}}' index.docker.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' >> DOCKERHUB_DIGEST_SHA
+          echo "DOCKERHUB_DIGEST_SHA=$(cat DOCKERHUB_DIGEST_SHA)" | tee -a "${GITHUB_ENV}"
 
       - name: Attest GHCR
         uses: actions/attest-build-provenance@v2
         with:
           subject-name: ghcr.io/${{github.repository}}
           subject-digest: ${{ env.GHCR_DIGEST_SHA }}
+          push-to-registry: true
+
+      - name: Attest Dockerhub
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/${{github.repository}}
+          subject-digest: ${{ env.DOCKERHUB_DIGEST_SHA }}
           push-to-registry: true
 
   linux:
@@ -208,7 +208,7 @@ jobs:
         id: meta
         with:
           images: |
-            ${{github.repository}}
+            index.docker.io/${{github.repository}}
             ghcr.io/${{github.repository}}
           flavor: |
             suffix=${{matrix.suffix}},onlatest=true
@@ -225,7 +225,7 @@ jobs:
           TARGET: ${{matrix.target}}
           DOCKER_BUILD_RECORD_UPLOAD: false
           GHCR_REPO: ghcr.io/${{github.repository}}
-          DOCKERHUB_REPO: ${{github.repository}}
+          DOCKERHUB_REPO: index.docker.io/${{github.repository}}
           BUILD_ENV: ${{matrix.build_env}}
           DOCKER_PLATFORM: ${{matrix.platform}}
           SUFFIX: ${{matrix.suffix}}
