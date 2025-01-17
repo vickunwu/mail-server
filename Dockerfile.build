@@ -47,6 +47,8 @@ ARG TARGET="x86_64-unknown-linux-gnu"
 ARG BUILD_ENV
 
 WORKDIR /app
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 COPY --from=planner /app/recipe.json recipe.json
 # Install toolchain and specify some env variables
 RUN \
@@ -54,8 +56,9 @@ RUN \
   export SCCACHE_GHA_CACHE_FROM=${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
   export SCCACHE_GHA_CACHE_TO=${TARGET}-recipe-$(sha256sum recipe.json | awk '{print $1}') && \
   mkdir -p artifact && \
+  touch /env-cargo && \
   if [ ! -z "${BUILD_ENV}" ]; then \
-      export ${BUILD_ENV}; \
+      echo "export ${BUILD_ENV}" >> /env-cargo; \
       echo "Setting up ${BUILD_ENV}"; \
   fi
 # Cargo-chef Cache layer
@@ -66,6 +69,7 @@ RUN \
     --mount=type=cache,target=/usr/local/cargo/git \
     # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
     # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+    source /env-cargo && \
     if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
         RUSTFLAGS="-L /usr/lib" cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
     fi
@@ -74,6 +78,7 @@ RUN \
     --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
+    source /env-cargo && \
     cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli
 # Copy the source code
 COPY . .
@@ -89,6 +94,7 @@ RUN \
     --mount=type=cache,target=/usr/local/cargo/git \
     # TODO According to https://github.com/apple/foundationdb/issues/11448#issuecomment-2417766293
     # Once FoundationDB v7.3.53 gets released, we should be able to build the aarch64-unknown-linux-gnu target.
+    source /env-cargo && \
     if [ "${TARGET}" = "x86_64-unknown-linux-gnu" ]; then \
         RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
         mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail-foundationdb; \
@@ -99,6 +105,7 @@ RUN \
     --mount=type=secret,id=ACTIONS_RUNTIME_TOKEN,env=ACTIONS_RUNTIME_TOKEN \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
+    source /env-cargo && \
     cargo zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli && \
     mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail && \
     mv /app/target/${TARGET}/release/stalwart-cli /app/artifact/stalwart-cli

@@ -27,6 +27,59 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  multiarch:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+      packages: write
+    needs: [linux]
+    if: github.event_name == 'push' || inputs.Docker
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: musl
+          - target: gnu
+    steps:
+      - name: Extract Metadata for Docker
+        uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: |
+            ${{github.repository}}
+            ghcr.io/${{github.repository}}
+          flavor: |
+            suffix=${{ endsWith(matrix.target, 'musl') && '-alpine' || '' }},onlatest=true
+          tags: |
+            type=ref,event=tag
+            type=edge,branch=multiarch
+            type=semver,pattern=v{{major}}.{{minor}}
+
+      - name: Log In to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{github.repository_owner}}
+          password: ${{github.token}}
+
+      - name: Log In to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{github.repository_owner}}
+          password: ${{secrets.DOCKERHUB_TOKEN}}
+
+      - name: Create Manifest List
+        run: |
+          IFS='\n' read -r tags <<< "${{ steps.meta.outputs.tags }}"
+          for tag in $tags; do
+            docker manifest create $tag \
+            --amend $tag-amd64 \
+            --amend $tag-arm64
+            docker manifest push $tag
+          done
+
   linux:
     permissions:
       id-token: write
@@ -123,10 +176,10 @@ jobs:
             ${{github.repository}}
             ghcr.io/${{github.repository}}
           flavor: |
-            suffix=${{ endsWith(matrix.target, 'musl') && '-alpine' || '' }},onlatest=true
+            suffix=${{ endsWith(matrix.target, 'musl') && '-alpine' || '' }}${{ startsWith(matrix.target, 'x86') && '-amd64' || '-arm64' }},onlatest=true
           tags: |
             type=ref,event=tag
-            type=edge,branch=main
+            type=edge,branch=multiarch
             type=semver,pattern=v{{major}}.{{minor}}
 
       - name: Build Artifact
@@ -140,6 +193,8 @@ jobs:
           ZIG_VERSION: ${{ steps.zig-version.outputs.zig_version }}
           DOCKER_PLATFORM: ${{ startsWith(matrix.target, 'x86') && 'amd64' || 'arm64' }}
         with:
+          set: |
+            *.platform=linux/${{env.DOCKER_PLATFORM}}
           source: .
           files: |
             docker-bake.hcl
