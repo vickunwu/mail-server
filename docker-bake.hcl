@@ -1,17 +1,17 @@
-group "default" {
-  targets = ["build"]
-}
 variable "TARGET" {
   default = "$TARGET"
 }
-variable "ARTIFACT_REPO" {
-  default = "$ARTIFACT_REPO"
+variable "GHCR_REPO" {
+  default = "$GHCR_REPO"
+}
+variable "DOCKERHUB_REPO" {
+  default = "$DOCKERHUB_REPO"
 }
 variable "BUILD_ENV" {
   default = "$BUILD_ENV"
 }
-variable "ZIG_VERSION" {
-  default = "$ZIG_VERSION"
+variable "SUFFIX" {
+  default = "$SUFFIX"
 }
 variable "DOCKER_PLATFORM" {
   default = "$DOCKER_PLATFORM"
@@ -25,14 +25,13 @@ target "build" {
   args = {
     TARGET = "${TARGET}"
     BUILD_ENV = equal("", "${BUILD_ENV}") ? null : "${BUILD_ENV}"
-    ZIG_VERSION = "${ZIG_VERSION}"
   }
   target = "binaries"
   cache-from = [
-    "type=registry,ref=${ARTIFACT_REPO}:buildcache-${TARGET}"
+    "type=registry,ref=${GHCR_REPO}-buildcache:${TARGET}"
   ]
   cache-to = [
-    "type=registry,ref=${ARTIFACT_REPO}:buildcache-${TARGET},mode=max,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true,image-manifest=false"
+    "type=registry,ref=${GHCR_REPO}-buildcache:${TARGET},mode=max,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true,image-manifest=false"
   ]
   context = "./"
   dockerfile = "Dockerfile.build"
@@ -42,11 +41,14 @@ target "image" {
   inherits = ["build","docker-metadata-action"]
   cache-to = [""]
   cache-from = [
-    "type=registry,ref=${ARTIFACT_REPO}:buildcache-${TARGET}"
+    "type=registry,ref=${GHCR_REPO}-buildcache:${TARGET}"
   ]
-  target = "${regexall("(?P<arch>[^-]+)-unknown-linux-(?P<tgt>.+)", TARGET)[0].tgt}-${DOCKER_PLATFORM}"
+  target = equal("", "${SUFFIX}") ? "gnu" : "musl"
   platforms = [
-    "linux/${DOCKER_PLATFORM}"
+    "${DOCKER_PLATFORM}"
   ]
-  output = ["type=image,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true"]
+  output = [
+    "type=image,name=${DOCKERHUB_REPO},push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true",
+    "type=image,name=${GHCR_REPO},push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true"
+  ]
 }

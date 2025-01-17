@@ -28,6 +28,13 @@ concurrency:
 
 jobs:
   multiarch:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: gnu
+          - variant: musl
+    name: Merge image / ${{matrix.variant}}
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -36,27 +43,7 @@ jobs:
       packages: write
     needs: [linux]
     if: github.event_name == 'push' || inputs.Docker
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: musl
-          - target: gnu
     steps:
-      - name: Extract Metadata for Docker
-        uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: |
-            ${{github.repository}}
-            ghcr.io/${{github.repository}}
-          flavor: |
-            suffix=${{ endsWith(matrix.target, 'musl') && '-alpine' || '' }},onlatest=true
-          tags: |
-            type=ref,event=tag
-            type=edge,branch=multiarch
-            type=semver,pattern=v{{major}}.{{minor}}
-
       - name: Log In to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -70,15 +57,48 @@ jobs:
           username: ${{github.repository_owner}}
           password: ${{secrets.DOCKERHUB_TOKEN}}
 
-      - name: Create Manifest List
+      - name: Download ${{matrix.variant}} meta bake definition
+        uses: actions/download-artifact@v4
+        with:
+          name: bake-meta-${{matrix.variant}}
+          path: ${{ runner.temp }}/${{matrix.variant}}
+
+      - name: Download ${{matrix.variant}} digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/${{matrix.variant}}/digests
+          pattern: digests-${{matrix.variant}}-*
+          merge-multiple: true
+
+      - name: Create ${{matrix.variant}} manifest list and push
+        working-directory: ${{ runner.temp }}/${{matrix.variant}}/digests
         run: |
-          IFS='\n' read -r tags <<< "${{ steps.meta.outputs.tags }}"
-          for tag in $tags; do
-            docker manifest create $tag \
-            --amend $tag-amd64 \
-            --amend $tag-arm64
-            docker manifest push $tag
-          done
+          docker buildx imagetools create $(jq -cr '.target."docker-metadata-action".tags | map(select(startswith("${{github.repository}}")) | "-t " + .) | join(" ")' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) \
+            $(printf '${{github.repository}}@sha256:%s ' *)
+          docker buildx imagetools create $(jq -cr '.target."docker-metadata-action".tags | map(select(startswith("ghcr.io/${{github.repository}}")) | "-t " + .) | join(" ")' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) \
+            $(printf 'ghcr.io/${{github.repository}}@sha256:%s ' *)
+
+      - name: Inspect ${{matrix.variant}} image
+        id: manifest-digest
+        run: |
+          DOCKERHUB_DIGEST_SHA="$(docker buildx imagetools inspect --format '{{json .Manifest}}' ${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest')"
+          GHCR_DIGEST_SHA="$(docker buildx imagetools inspect --format '{{json .Manifest}}' ${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest')"
+          echo "DOCKERHUB_DIGEST_SHA=${DOCKERHUB_DIGEST_SHA}" | tee -a "${GITHUB_ENV}"
+          echo "GHCR_DIGEST_SHA=${GHCR_DIGEST_SHA}" | tee -a "${GITHUB_ENV}"
+
+      - name: Attest Dockerhub
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: index.docker.io/${{github.repository}}
+          subject-digest: ${{ env.DOCKERHUB_DIGEST_SHA }}
+          push-to-registry: true
+
+      - name: Attest GHCR
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/${{github.repository}}
+          subject-digest: ${{ env.GHCR_DIGEST_SHA }}
+          push-to-registry: true
 
   linux:
     permissions:
@@ -91,18 +111,33 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            platform: linux/amd64
+            suffix: ''
           - target: x86_64-unknown-linux-musl
+            platform: linux/amd64
+            suffix: '-alpine'
           - target: aarch64-unknown-linux-gnu
+            platform: linux/arm64
+            suffix: ''
             build_env: "JEMALLOC_SYS_WITH_LG_PAGE=16"
           - target: aarch64-unknown-linux-musl
+            platform: linux/arm64
+            suffix: '-alpine'
             build_env: "JEMALLOC_SYS_WITH_LG_PAGE=16"
           - target: armv7-unknown-linux-gnueabihf
+            platform: linux/arm/v7
+            suffix: ''
             build_env: "JEMALLOC_SYS_WITH_LG_PAGE=16"
           - target: armv7-unknown-linux-musleabihf
+            platform: linux/arm/v7
+            suffix: '-alpine'
             build_env: "JEMALLOC_SYS_WITH_LG_PAGE=16"
           - target: arm-unknown-linux-gnueabihf
+            platform: linux/arm/v6
+            suffix: ''
           - target: arm-unknown-linux-musleabihf
-
+            platform: linux/arm/v6
+            suffix: '-alpine'
     name: Build / ${{matrix.target}}
     runs-on: ubuntu-latest
     steps:
@@ -111,9 +146,14 @@ jobs:
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+        with:
+          platforms: "arm64,arm"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            network=host
 
       - name: Log In to GitHub Container Registry
         uses: docker/login-action@v3
@@ -128,6 +168,11 @@ jobs:
           username: ${{github.repository_owner}}
           password: ${{secrets.DOCKERHUB_TOKEN}}
 
+      - name: Calculate shasum of external deps
+        id: cal-dep-shasum
+        run: |
+          echo "checksum=$(yq -p toml -oy '.package[] | select((.source | contains("")) or (.checksum | contains("")))' Cargo.lock | sha256sum | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
       - name: Cache apt
         uses: actions/cache@v4
         id: apt-cache
@@ -136,16 +181,6 @@ jobs:
             var-cache-apt
             var-lib-apt
           key: docker-apt-cache-${{ hashFiles('Dockerfile.build') }}
-
-      - name: Calculate shasum of external deps
-        id: cal-dep-shasum
-        run: |
-          echo "checksum=$(yq -p toml -oy '.package[] | select((.source | contains("")) or (.checksum | contains("")))' Cargo.lock | sha256sum | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-
-      - name: Get latest zig version
-        id: zig-version
-        run: |
-          echo "zig_version=$(curl -s "https://api.github.com/repos/ziglang/zig/releases/latest" | jq -r '.tag_name')" >> "$GITHUB_OUTPUT"
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -176,28 +211,32 @@ jobs:
             ${{github.repository}}
             ghcr.io/${{github.repository}}
           flavor: |
-            suffix=${{ endsWith(matrix.target, 'musl') && '-alpine' || '' }}${{ startsWith(matrix.target, 'x86') && '-amd64' || '-arm64' }},onlatest=true
+            suffix=${{matrix.suffix}},onlatest=true
           tags: |
             type=ref,event=tag
-            type=edge,branch=multiarch
+            type=ref,event=branch
+            type=edge,branch=main
             type=semver,pattern=v{{major}}.{{minor}}
 
       - name: Build Artifact
-        id: build
+        id: bake
         uses: docker/bake-action@v6
         env:
           TARGET: ${{matrix.target}}
           DOCKER_BUILD_RECORD_UPLOAD: false
-          ARTIFACT_REPO: ghcr.io/${{github.repository}}
+          GHCR_REPO: ghcr.io/${{github.repository}}
+          DOCKERHUB_REPO: ${{github.repository}}
           BUILD_ENV: ${{matrix.build_env}}
-          ZIG_VERSION: ${{ steps.zig-version.outputs.zig_version }}
-          DOCKER_PLATFORM: ${{ startsWith(matrix.target, 'x86') && 'amd64' || 'arm64' }}
+          DOCKER_PLATFORM: ${{matrix.platform}}
+          SUFFIX: ${{matrix.suffix}}
         with:
           source: .
+          set: |
+            *.tags=
           files: |
             docker-bake.hcl
             ${{ steps.meta.outputs.bake-file }}
-          targets: ${{(github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64')) && 'build,image' || 'build'}}
+          targets: ${{(github.event_name == 'push' || inputs.Docker) && 'build,image' || 'build'}}
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -207,27 +246,40 @@ jobs:
             artifact
             !artifact/*.json
 
-      - name: Get image digest
-        id: image-digest
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+      - name: Export digest & Rename meta bake definition file
+        if: github.event_name == 'push' || inputs.Docker
         run: |
-          echo "image_digest=$(echo '${{ steps.build.outputs.metadata }}' | jq -r '.image.["containerimage.digest"]')" >> "$GITHUB_OUTPUT"
+          mv "${{ steps.meta.outputs.bake-file }}" "${{ runner.temp }}/bake-meta.json"
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ fromJSON(steps.bake.outputs.metadata).image['containerimage.digest'] }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
-      - name: Attest Dockerhub
-        uses: actions/attest-build-provenance@v2
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+      - name: Upload GNU meta bake definition
+        uses: actions/upload-artifact@v4
+        if: (github.event_name == 'push' || inputs.Docker) && endsWith(matrix.target,'gnu') && startsWith(matrix.target,'x86')
         with:
-          subject-name: index.docker.io/${{github.repository}}
-          subject-digest: ${{ steps.image-digest.outputs.image_digest }}
-          push-to-registry: true
+          name: bake-meta-gnu
+          path: ${{ runner.temp }}/bake-meta.json
+          if-no-files-found: error
+          retention-days: 1
 
-      - name: Attest GHCR
-        uses: actions/attest-build-provenance@v2
-        if: (github.event_name == 'push' || inputs.Docker) && (startsWith(matrix.target, 'x86') || startsWith(matrix.target, 'aarch64'))
+      - name: Upload musl meta bake definition
+        uses: actions/upload-artifact@v4
+        if: (github.event_name == 'push' || inputs.Docker) && endsWith(matrix.target,'musl') && startsWith(matrix.target,'x86')
         with:
-          subject-name: ghcr.io/${{github.repository}}
-          subject-digest: ${{ steps.image-digest.outputs.image_digest }}
-          push-to-registry: true
+          name: bake-meta-musl
+          path: ${{ runner.temp }}/bake-meta.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload digest
+        if: github.event_name == 'push' || inputs.Docker
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{matrix.suffix == '' && 'gnu' || 'musl'}}-${{ matrix.target }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   windows:
     name: Build / ${{matrix.target}}
