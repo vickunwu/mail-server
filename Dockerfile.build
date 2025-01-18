@@ -7,9 +7,7 @@
 FROM --platform=$BUILDPLATFORM rust:slim-bookworm AS base
 
 ENV DEBIAN_FRONTEND="noninteractive" \
-    RUSTC_WRAPPER="sccache" \
     BINSTALL_DISABLE_TELEMETRY=true \
-    SCCACHE_GHA_ENABLED=true \
     CARGO_TERM_COLOR=always \
     LANG=C.UTF-8 \
     TZ=UTC \
@@ -83,9 +81,12 @@ RUN \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     source /env-cargo && \
-    cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli
+    cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "sqlite postgres mysql rocks elastic s3 redis azure enterprise" && \
+    cargo chef cook --recipe-path recipe.json --zigbuild --release --target ${TARGET} -p stalwart-cli
 # Copy the source code
 COPY . .
+ENV RUSTC_WRAPPER="sccache" \
+    SCCACHE_GHA_ENABLED=true
 # Build foundationdb version
 RUN \
     --mount=type=secret,id=ACTIONS_CACHE_URL,env=ACTIONS_CACHE_URL \
@@ -106,7 +107,8 @@ RUN \
     --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     source /env-cargo && \
-    cargo zigbuild --release --target ${TARGET} -p mail-server -p stalwart-cli && \
+    cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "sqlite postgres mysql rocks elastic s3 redis azure enterprise" && \
+    cargo zigbuild --release --target ${TARGET} -p stalwart-cli && \
     mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail && \
     mv /app/target/${TARGET}/release/stalwart-cli /app/artifact/stalwart-cli
 

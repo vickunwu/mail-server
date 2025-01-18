@@ -222,10 +222,9 @@ jobs:
         id: bake
         uses: docker/bake-action@v6
         env:
-          TARGET: ${{matrix.target}}
           DOCKER_BUILD_RECORD_UPLOAD: false
+          TARGET: ${{matrix.target}}
           GHCR_REPO: ghcr.io/${{github.repository}}
-          DOCKERHUB_REPO: index.docker.io/${{github.repository}}
           BUILD_ENV: ${{matrix.build_env}}
           DOCKER_PLATFORM: ${{matrix.platform}}
           SUFFIX: ${{matrix.suffix}}
@@ -233,6 +232,7 @@ jobs:
           source: .
           set: |
             *.tags=
+            image.output=type=image,"name=ghcr.io/${{github.repository}},index.docker.io/${{github.repository}}",push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true
           files: |
             docker-bake.hcl
             ${{ steps.meta.outputs.bake-file }}
@@ -303,7 +303,8 @@ jobs:
       - name: Build
         run: |
           rustup target add ${{matrix.target}}
-          cargo build --release --target "${{matrix.target}}" -p mail-server -p stalwart-cli
+          cargo build --release --target ${{matrix.target}} -p mail-server --no-default-features --features "sqlite postgres mysql rocks elastic s3 redis azure enterprise"
+          cargo build --release --target ${{matrix.target}} -p stalwart-cli
           mkdir -p artifacts
           mv ./target/${{matrix.target}}/release/stalwart-mail.exe ./artifacts/stalwart-mail.exe
           mv ./target/${{matrix.target}}/release/stalwart-cli.exe ./artifacts/stalwart-cli.exe
@@ -311,7 +312,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{matrix.target}}
+          name: artifact-${{matrix.target}}
           path: artifacts
 
   macos:
@@ -338,14 +339,15 @@ jobs:
           # Get latest FoundationDB installer
           curl -Lo foundationdb.pkg "https://glare.now.sh/apple/foundationdb/${{startsWith(matrix.target, 'x86') && 'x86_64' || 'arm64'}}.pkg"
           sudo installer -allowUntrusted -dumplog -pkg foundationdb.pkg -target /
-          cargo build --release --target "${{matrix.target}}" -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"
+          cargo build --release --target ${{matrix.target}} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"
           mkdir -p artifacts
           mv ./target/${{matrix.target}}/release/stalwart-mail ./artifacts/stalwart-mail-foundationdb
 
       - name: Build
         run: |
           rustup target add ${{matrix.target}}
-          cargo build --release --target "${{matrix.target}}" -p mail-server -p stalwart-cli
+          cargo build --release --target ${{matrix.target}} -p mail-server --no-default-features --features "sqlite postgres mysql rocks elastic s3 redis azure enterprise"
+          cargo build --release --target ${{matrix.target}} -p stalwart-cli
           mkdir -p artifacts
           mv ./target/${{matrix.target}}/release/stalwart-mail ./artifacts/stalwart-mail
           mv ./target/${{matrix.target}}/release/stalwart-cli ./artifacts/stalwart-cli
@@ -370,10 +372,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: archive
-          pattern: |
-            *
-            !digests-*
-            !bake-meta-*
+          pattern: artifact-*
 
       - name: Compress
         run: |
@@ -381,15 +380,16 @@ jobs:
           BASE_DIR="$(pwd)/archive"
           compress_files() {
               local dir="$1"
+              local archive_dir_name="${dir#artifact-}"
               cd "$dir"
               # Process each file in the directory
               for file in `ls`; do
                   filename="${file%.*}"
                   extension="${file##*.}"
                   if [ "$extension" = "exe" ]; then
-                      7z a -tzip "${filename}-${dir}.zip" "$file" > /dev/null
+                      7z a -tzip "${filename}-${archive_dir_name}.zip" "$file" > /dev/null
                   else
-                      tar -czf "${filename}-${dir}.tar.gz" "$file"
+                      tar -czf "${filename}-${archive_dir_name}.tar.gz" "$file"
                   fi
               done
               cd $BASE_DIR

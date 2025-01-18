@@ -48,7 +48,6 @@ target "image" {
     "${DOCKER_PLATFORM}"
   ]
   output = [
-    "type=image,name=${DOCKERHUB_REPO},push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true",
-    "type=image,name=${GHCR_REPO},push-by-digest=true,name-canonical=true,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true"
+    ""
   ]
 }
