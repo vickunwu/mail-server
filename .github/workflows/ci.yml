@@ -81,9 +81,9 @@ jobs:
       - name: Inspect ${{matrix.variant}} image
         id: manifest-digest
         run: |
-          docker buildx imagetools inspect --format '{{json .Manifest}}' ghcr.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' >> GHCR_DIGEST_SHA
+          docker buildx imagetools inspect --format '{{json .Manifest}}' ghcr.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' > GHCR_DIGEST_SHA
           echo "GHCR_DIGEST_SHA=$(cat GHCR_DIGEST_SHA)" | tee -a "${GITHUB_ENV}"
-          docker buildx imagetools inspect --format '{{json .Manifest}}' index.docker.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' >> DOCKERHUB_DIGEST_SHA
+          docker buildx imagetools inspect --format '{{json .Manifest}}' index.docker.io/${{github.repository}}:$(jq -r '.target."docker-metadata-action".args.DOCKER_META_VERSION' ${{ runner.temp }}/${{matrix.variant}}/bake-meta.json) | jq -r '.digest' > DOCKERHUB_DIGEST_SHA
           echo "DOCKERHUB_DIGEST_SHA=$(cat DOCKERHUB_DIGEST_SHA)" | tee -a "${GITHUB_ENV}"
 
       - name: Attest GHCR
@@ -254,6 +254,15 @@ jobs:
           digest="${{ fromJSON(steps.bake.outputs.metadata).image['containerimage.digest'] }}"
           touch "${{ runner.temp }}/digests/${digest#sha256:}"
 
+      - name: Upload digest
+        if: github.event_name == 'push' || inputs.Docker
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{matrix.suffix == '' && 'gnu' || 'musl'}}-${{ matrix.target }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Upload GNU meta bake definition
         uses: actions/upload-artifact@v4
         if: (github.event_name == 'push' || inputs.Docker) && endsWith(matrix.target,'gnu') && startsWith(matrix.target,'x86')
@@ -269,15 +278,6 @@ jobs:
         with:
           name: bake-meta-musl
           path: ${{ runner.temp }}/bake-meta.json
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Upload digest
-        if: github.event_name == 'push' || inputs.Docker
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{matrix.suffix == '' && 'gnu' || 'musl'}}-${{ matrix.target }}
-          path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
@@ -370,6 +370,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: archive
+          pattern: |
+            *
+            !digests-*
+            !bake-meta-*
 
       - name: Compress
         run: |
