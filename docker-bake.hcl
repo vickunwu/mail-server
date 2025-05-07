@@ -21,6 +21,7 @@ target "build" {
   ]
   args = {
     TARGET = "${TARGET}"
+    DOCKER_PLATFORM = "${DOCKER_PLATFORM}"
     BUILD_ENV = equal("", "${BUILD_ENV}") ? null : "${BUILD_ENV}"
   }
   target = "binaries"

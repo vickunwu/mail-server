@@ -29,7 +29,7 @@ RUN \
 # Install cargo-binstall
 RUN curl --retry 5 -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 # Install cargo-chef & sccache & cargo-zigbuild
-RUN cargo binstall --no-confirm cargo-chef sccache cargo-zigbuild@v0.19.8
+RUN cargo binstall --no-confirm cargo-chef sccache cargo-zigbuild
 
 # *****************
 # Planner
@@ -48,6 +48,7 @@ WORKDIR /app
 COPY --from=planner /app/recipe.json recipe.json
 ARG TARGET
 ARG BUILD_ENV
+ARG DOCKER_PLATFORM
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install toolchain and specify some env variables
 RUN \
@@ -60,13 +61,14 @@ RUN \
         echo "Setting up ${BUILD_ENV}"; \
     fi && \
     if [[ "${TARGET}" == *gnu ]]; then \
-        echo "export FDB_ARCH=${TARGET%%-*}" >> /env-cargo; \
+        echo "export FDB_ARCH=${DOCKER_PLATFORM#linux/}" >> /env-cargo; \
     fi
 # Install FoundationDB
 RUN \
     source /env-cargo && \
     if [ ! -z "${FDB_ARCH}" ]; then \
-        curl --retry 5 -Lso /usr/lib/libfdb_c.so "$(curl --retry 5 -Ls 'https://api.github.com/repos/apple/foundationdb/releases' | jq --arg FDB_ARCH "$FDB_ARCH" -r '.[] | select(.prerelease == false) | .assets[] | select(.name | test("libfdb_c." + $FDB_ARCH + ".so")) | .browser_download_url' | head -n1)"; \
+        curl --retry 5 -Lso client.deb "$(curl --retry 5 -Ls 'https://api.github.com/repos/apple/foundationdb/releases' | jq --arg FDB_ARCH "$FDB_ARCH" -r '.[] | select(.prerelease == false) | .assets[] | select(.name | test("foundationdb-clients.*" + $FDB_ARCH + ".deb$")) | .browser_download_url' | head -n1)" && \
+        dpkg -i client.deb; \
     fi
 # Cargo-chef Cache layer
 RUN \
@@ -98,7 +100,7 @@ RUN \
     --mount=type=cache,target=/usr/local/cargo/git \
     source /env-cargo && \
     if [ ! -z "${FDB_ARCH}" ]; then \
-        RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise"; \
+        RUSTFLAGS="-L /usr/lib" cargo zigbuild --release --target ${TARGET} -p mail-server --no-default-features --features "foundationdb elastic s3 redis enterprise" && \
         mv /app/target/${TARGET}/release/stalwart-mail /app/artifact/stalwart-mail-foundationdb; \
     fi
 # Build generic version
