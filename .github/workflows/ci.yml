@@ -149,6 +149,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Get FoundationDB Headers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh extension install mislav/gh-cp
+          REPO="apple/foundationdb"
+          FILES=(
+            "bindings/c/foundationdb/fdb_c.h"
+            "bindings/c/foundationdb/fdb_c_types.h"
+            "bindings/c/foundationdb/fdb_c_internal.h"
+            "bindings/c/foundationdb/fdb_c_options.g.h"
+            "fdbclient/vexillographer/fdb.options"
+            "bindings/c/foundationdb/fdb_c_shim.h"
+          )
+
+          LATEST_TAG=$(gh release list --repo "$REPO" --limit 20 --json tagName,isPrerelease | jq -r '.[] | select(.isPrerelease == false) | .tagName' | head -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "Error: Could not find a non-pre-release tag for $REPO."
+            exit 1
+          fi
+
+          for FILE_PATH in "${FILES[@]}"; do
+            gh cp "$REPO":"$LATEST_TAG":"$FILE_PATH" resources/fdb-headers
+          done
+
+          echo "Download process finished."
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:

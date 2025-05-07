@@ -5,6 +5,7 @@
 !crates
 !tests
 !resources/docker/entrypoint.sh
+!resources/fdb-headers
 
 !Cargo.lock
 !Cargo.toml
