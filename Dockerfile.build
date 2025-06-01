@@ -19,17 +19,24 @@ RUN \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' >/etc/apt/apt.conf.d/keep-cache && \
     apt-get update && \
-    apt-get install -yq --no-install-recommends curl jq xz-utils make libclang-19-dev
+    apt-get install -yq --no-install-recommends curl jq xz-utils make libclang-19-dev cmake
 # Install zig
-RUN \
-    ZIG_VERSION=0.13.0 && \
-    [ ! -z "$ZIG_VERSION" ] && \
-    curl --retry 5 -Ls "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-$(uname -m)-${ZIG_VERSION}.tar.xz" | tar -J -x -C /usr/local && \
-    ln -s "/usr/local/zig-linux-$(uname -m)-${ZIG_VERSION}/zig" /usr/local/bin/zig
+RUN <<'HEREDOC'
+  # Install Zig:
+  ZIG_VERSION=0.14.1
+  ZIG_RELEASE=$(curl -fsSL https://ziglang.org/download/index.json | jq -rc '.["'"${ZIG_VERSION}"'"]["'"$(uname -m)"'" + "-linux"].tarball')
+  ZIG_DIR="/opt/zig-${ZIG_VERSION}"
+
+  # Prefer mkdir with `--strip-components=1` otherwise archive top-level directory is the longer archive filename from URL
+  # Use `--no-same-owner` because ownership is otherwise 1000:1000
+  mkdir "${ZIG_DIR}"
+  curl -fsSL "${ZIG_RELEASE}" | tar --extract --xz --directory "${ZIG_DIR}" --strip-components=1 --no-same-owner
+  ln -s "${ZIG_DIR}/zig" /usr/local/bin/zig
+HEREDOC
 # Install cargo-binstall
 RUN curl --retry 5 -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 # Install cargo-chef & sccache & cargo-zigbuild
-RUN cargo binstall --no-confirm cargo-chef sccache cargo-zigbuild
+RUN cargo binstall --no-confirm cargo-chef sccache cargo-zigbuild bindgen-cli
 
 # *****************
 # Planner
