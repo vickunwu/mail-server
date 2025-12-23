@@ -33,7 +33,7 @@ http-body-util = "0.1.0"
 form_urlencoded = "1.1.0"
 psl = "2"
 quick_cache = "0.6.9"
-fast-float = "0.2.0"
+#fast-float = "0.2.0"
 rkyv = { version = "0.8.10", features = ["little_endian"] }
 compact_str = "0.9.0"
 xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
