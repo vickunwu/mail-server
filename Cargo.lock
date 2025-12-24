@@ -1196,7 +1196,7 @@ dependencies = [
  "proxy-header",
  "psl",
  "pwhash",
- "rcgen 0.12.1",
+ "rcgen",
  "regex",
  "reqwest",
  "ring",
@@ -5974,18 +5974,6 @@ dependencies = [
 
 [[package]]
 name = "rcgen"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48406db8ac1f3cbc7dcdb56ec355343817958a356ff430259bb07baf7607e1e1"
-dependencies = [
- "pem",
- "ring",
- "time",
- "yasna",
-]
-
-[[package]]
-name = "rcgen"
 version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ec0a99f2de91c3cddc84b37e7db80e4d96b743e05607f647eb236fc0455907f"
@@ -6857,7 +6845,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "argon2",
- "base64 0.22.1",
+ "base64 0.21.7",
  "block-padding",
  "blowfish 0.9.1",
  "buffered-reader",
@@ -8604,7 +8592,7 @@ dependencies = [
  "psl",
  "quick_cache",
  "rand 0.9.2",
- "rcgen 0.14.6",
+ "rcgen",
  "regex",
  "reqwest",
  "ring",
