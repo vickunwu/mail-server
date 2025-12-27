@@ -6,14 +6,16 @@
 
 use std::path::PathBuf;
 
-#[cfg(not(target_env = "msvc"))]
-use tikv_jemallocator::Jemalloc;
 #[cfg(test)]
 use trc::Collector;
 
 #[cfg(not(target_env = "msvc"))]
 #[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(target_env = "msvc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[cfg(test)]
 pub mod cluster;
