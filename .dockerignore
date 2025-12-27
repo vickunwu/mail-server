@@ -5,6 +5,7 @@
 !crates
 !tests
 !resources
+!.cargo
 
 !Cargo.lock
 !Cargo.toml
