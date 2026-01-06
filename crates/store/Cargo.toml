@@ -28,7 +28,7 @@ ahash = { version = "0.8.2", features = ["serde"] }
 xxhash-rust = { version = "0.8.5", features = ["xxh3"] }
 farmhash = "1.1.5"
 parking_lot = "0.12"
-lru-cache = { version = "0.1.2", optional = true }
+# lru-cache = { version = "0.1.2", optional = true }
 num_cpus = { version = "1.17", optional = true }
 blake3 = "1.8"
 lz4_flex = { version = "0.12", default-features = false }
@@ -66,7 +66,7 @@ tokio = { version = "1.47", features = ["full"] }
 [features]
 # Data Stores
 rocks = ["rocksdb", "rayon", "num_cpus"]
-sqlite = ["rusqlite", "rayon", "r2d2", "num_cpus", "lru-cache"]
+sqlite = ["rusqlite", "rayon", "r2d2", "num_cpus"]
 postgres = ["tokio-postgres", "deadpool", "deadpool-postgres", "tokio-rustls", "rustls", "ring", "rustls-pki-types", "futures", "bytes"]
 mysql = ["mysql_async", "futures"]
 foundation = ["foundationdb", "futures"]
