@@ -32,11 +32,12 @@ mod cpu;
 pub mod test_data;
 
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
-use tikv_jemallocator::Jemalloc;
-
-#[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
 #[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(target_env = "msvc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
