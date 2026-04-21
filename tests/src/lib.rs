@@ -6,12 +6,14 @@
 
 #[cfg(test)]
 use ::store::registry::bootstrap::Bootstrap;
-#[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
-use tikv_jemallocator::Jemalloc;
 
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
 #[global_allocator]
-static GLOBAL: Jemalloc = Jemalloc;
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(target_env = "msvc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[cfg(test)]
 pub mod automation;
