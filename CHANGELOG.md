@@ -15,7 +15,9 @@ If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If
 - RocksDB: Blob garbage collection rewrites every stored blob on each compaction of the blobs column family, about once per 128MB of new mail.
 - Milter: End-of-headers is not sent to milters that negotiate `SMFIP_NOHDRS` without `SMFIP_NOEOH`, so the transaction stalls until it times out.
 - OIDC: When the access token lacks the `claimUsername` claim but has an `email` claim, the account is built from `email` without consulting the userinfo endpoint.
-- JMAP: `onSuccessUpdateEmail` and `onSuccessDestroyEmail` entries in `EmailSubmission/set` that name an existing submission by id update or destroy the Email with the same id instead of the submission's own Email.
+- JMAP: 
+  - `onSuccessUpdateEmail` and `onSuccessDestroyEmail` entries in `EmailSubmission/set` that name an existing submission by id update or destroy the Email with the same id instead of the submission's own Email.
+  - A `VacationResponse/set` that only sets `isEnabled` on an account without a vacation response activates an empty Sieve script.
 
 ## [0.16.25] - 2026-10-05
 
