@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file. This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [0.16.26] - 2026-10-XX
+## [0.16.26] - 2026-10-11
 
 If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If you are upgrading from v0.15.x and below, please read the [upgrading documentation](https://github.com/stalwartlabs/stalwart/blob/main/UPGRADING/v0_16.md) for more information on how to upgrade from previous versions.
 
@@ -13,6 +13,7 @@ If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If
 ## Changed
 
 ## Fixed
+- DNSSEC: Use `hickory-resolver` patched fork at https://github.com/stalwartlabs/hickory-dns.
 - RocksDB: Blob garbage collection rewrites every stored blob on each compaction of the blobs column family, about once per 128MB of new mail.
 - Milter: End-of-headers is not sent to milters that negotiate `SMFIP_NOHDRS` without `SMFIP_NOEOH`, so the transaction stalls until it times out.
 - OIDC: When the access token lacks the `claimUsername` claim but has an `email` claim, the account is built from `email` without consulting the userinfo endpoint.
