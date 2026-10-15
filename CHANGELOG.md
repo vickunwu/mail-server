@@ -11,6 +11,7 @@ If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If
 ## Changed
 
 ## Fixed
+- IMAP: `SEARCH RETURN` with `MIN` or `MAX` alongside `ALL` returns only the minimum and maximum in `ALL`, and `SAVE` combined with `MIN` or `MAX` and `ALL` or `COUNT` saves only the minimum and maximum instead of every match.
 
 ## [0.16.26] - 2026-10-11
 
@@ -21,6 +22,7 @@ If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If
 - JMAP: `Mailbox/set` allows moving a mailbox under a parent that already has a child with the same name, and rejects renames that only change the case of a mailbox name with `alreadyExists`.
 
 ## Changed
+- Breaking: x86_64 binaries and Docker images (except musl builds) now require a CPU with the x86-64-v2 instruction set (which includes SSE3, SSSE3, SSE4.1, SSE4.2 and POPCNT), and the server refuses to start on older CPUs. Virtual machines using a generic CPU model such as QEMU's "Common KVM processor" are affected. To fix it, set the VM CPU type to `host` or `x86-64-v2-AES` (Proxmox), or switch to the musl build: the `-alpine` Docker tags (for example `stalwartlabs/stalwart:v0.16-alpine`) or the `x86_64-unknown-linux-musl` binary.
 
 ## Fixed
 - DNSSEC: Use `hickory-resolver` patched fork at https://github.com/stalwartlabs/hickory-dns.
