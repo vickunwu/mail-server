@@ -11,7 +11,9 @@ If you are upgrading from v0.16.x, replace the binary (or run `docker pull`). If
 ## Changed
 
 ## Fixed
-- IMAP: `SEARCH RETURN` with `MIN` or `MAX` alongside `ALL` returns only the minimum and maximum in `ALL`, and `SAVE` combined with `MIN` or `MAX` and `ALL` or `COUNT` saves only the minimum and maximum instead of every match.
+- IMAP:
+  - `APPEND` and `COPY`/`MOVE` into another account's mailbox do not change the JMAP `EmailDelivery` state.
+  - `SEARCH RETURN` with `MIN` or `MAX` alongside `ALL` returns only the minimum and maximum in `ALL`, and `SAVE` combined with `MIN` or `MAX` and `ALL` or `COUNT` saves only the minimum and maximum instead of every match.
 - OAuth: Loopback redirect URIs without a path (for example `http://127.0.0.1:45678`) are not matched against registered loopback URIs on any port and are rejected by dynamic client registration.
 - WebDAV: `PROPFIND` `allprop` returns `DAV:current-user-principal`, so Windows Explorer shows every file and folder under the account name.
 
